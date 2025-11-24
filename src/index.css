@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: linear-gradient(180deg, #1a0f0a 0%, #0f0806 100%);
+}
+
+/* Leaflet custom styles */
+.leaflet-container {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.leaflet-popup-content-wrapper {
+  background: #1a0f0a;
+  color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 107, 44, 0.2);
+}
+
+.leaflet-popup-tip {
+  background: #1a0f0a;
+}
+
+.leaflet-popup-close-button {
+  color: #ff6b2c !important;
+  font-size: 20px !important;
+  font-weight: bold;
+}
+
+.leaflet-popup-close-button:hover {
+  color: #ffb340 !important;
+}
+
+.custom-marker {
+  transition: transform 0.2s;
+}
+
+.custom-marker:hover {
+  transform: scale(1.1);
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-warm bg-clip-text text-transparent;
+  }
+  
+  .card-premium {
+    @apply rounded-3xl border border-primary/20 bg-gradient-to-br from-bg-elevated to-bg-warm shadow-card backdrop-blur-sm;
+  }
+  
+  .btn-primary {
+    @apply rounded-full bg-gradient-warm px-6 py-2.5 text-sm font-semibold text-white shadow-glow transition-all hover:shadow-glow-lg hover:scale-105;
+  }
+  
+  .btn-secondary {
+    @apply rounded-full border-2 border-primary/40 bg-bg-elevated/80 px-6 py-2.5 text-sm font-semibold text-primary transition-all hover:bg-primary/10 hover:border-primary;
+  }
+}
