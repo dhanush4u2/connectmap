@@ -1,11 +1,15 @@
 import 'leaflet/dist/leaflet.css'
 import { useEffect, useState } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from 'react-leaflet'
 import { divIcon } from 'leaflet'
-import { collection, query, where, getDocs } from 'firebase/firestore'
+import type { LatLngExpression } from 'leaflet'
+import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { PlaceMarker } from './PlaceMarker'
+import { DirectionsSearch } from './DirectionsSearch'
+import { GoingDialog } from './GoingDialog'
+import { useAuthState } from '../hooks/useAuthState'
 import type { PlaceAttendanceStats } from '../types'
 
 // Flexible Place type - all fields except placeId are optional
@@ -51,6 +55,27 @@ function MapBoundsHandler({ onBoundsChange }: { onBoundsChange?: (bounds: any) =
 export function MapView({ onBoundsChange, selectedCategory }: MapViewProps) {
   const [places, setPlaces] = useState<Place[]>([])
   const [mapKey, setMapKey] = useState(0)
+  const [directionsOpen, setDirectionsOpen] = useState(false)
+  const [selectedPlace, setSelectedPlace] = useState<Place | null>(null)
+  const [goingDialogOpen, setGoingDialogOpen] = useState(false)
+  const [routePath, setRoutePath] = useState<LatLngExpression[] | null>(null)
+  const [routeDistance, setRouteDistance] = useState<string | null>(null)
+  const [routeDuration, setRouteDuration] = useState<string | null>(null)
+  const { user } = useAuthState()
+
+  const handleRouteCalculated = (route: LatLngExpression[], distance: string, duration: string) => {
+    setRoutePath(route)
+    setRouteDistance(distance)
+    setRouteDuration(duration)
+  }
+
+  const handleCloseDirections = () => {
+    setDirectionsOpen(false)
+    setSelectedPlace(null)
+    setRoutePath(null)
+    setRouteDistance(null)
+    setRouteDuration(null)
+  }
 
   // Fetch places from Firestore with flexible data handling
   useEffect(() => {
@@ -145,6 +170,18 @@ export function MapView({ onBoundsChange, selectedCategory }: MapViewProps) {
         
         <MapBoundsHandler onBoundsChange={onBoundsChange} />
         
+        {/* Route Display */}
+        {routePath && (
+          <Polyline
+            positions={routePath}
+            pathOptions={{
+              color: '#ff6b2c',
+              weight: 4,
+              opacity: 0.8,
+            }}
+          />
+        )}
+        
         {places.map((place) => {
           // Safety check for location
           if (!place.location?.lat || !place.location?.lng) return null
@@ -178,7 +215,7 @@ export function MapView({ onBoundsChange, selectedCategory }: MapViewProps) {
               position={[place.location.lat, place.location.lng]}
               icon={customIcon}
             >
-              <Popup className="modern-popup" maxWidth={320}>
+              <Popup className="modern-popup" maxWidth={360}>
                 <div className="popup-content">
                   <h3 className="popup-title">
                     {place.title || 'Untitled Place'}
@@ -202,6 +239,57 @@ export function MapView({ onBoundsChange, selectedCategory }: MapViewProps) {
                     {likes > 0 && <span>❤️ {likes}</span>}
                     {rating > 0 && <span>⭐ {rating.toFixed(1)}</span>}
                   </div>
+                  
+                  {/* Action Buttons */}
+                  <div className="popup-actions">
+                    <button
+                      onClick={async () => {
+                        if (!user) {
+                          alert('Please sign in to save places')
+                          return
+                        }
+                        try {
+                          const savesRef = collection(db, 'place_saves')
+                          await addDoc(savesRef, {
+                            placeId: place.placeId,
+                            userId: user.uid,
+                            savedAt: serverTimestamp(),
+                          })
+                          alert('Saved!')
+                        } catch (error) {
+                          console.error('Error saving:', error)
+                        }
+                      }}
+                      className="popup-btn popup-btn-primary"
+                    >
+                      💾 Save
+                    </button>
+                    
+                    <button
+                      onClick={() => {
+                        if (!user) {
+                          alert('Please sign in to RSVP')
+                          return
+                        }
+                        setSelectedPlace(place)
+                        setGoingDialogOpen(true)
+                      }}
+                      className="popup-btn popup-btn-primary"
+                    >
+                      ✅ I'm Going
+                    </button>
+                    
+                    <button
+                      onClick={() => {
+                        setSelectedPlace(place)
+                        setDirectionsOpen(true)
+                      }}
+                      className="popup-btn popup-btn-secondary"
+                    >
+                      🧭 Directions
+                    </button>
+                  </div>
+                  
                   <a
                     href={`/place/${place.placeId}`}
                     className="popup-link"
@@ -218,6 +306,74 @@ export function MapView({ onBoundsChange, selectedCategory }: MapViewProps) {
           )
         })}
       </MapContainer>
+      
+      {/* Route Info Display */}
+      {routeDistance && routeDuration && (
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[999] flex gap-3">
+          <div className="bg-bg-elevated/95 backdrop-blur-xl border border-primary/30 rounded-xl px-4 py-2 shadow-lg">
+            <p className="text-xs text-slate-400">Distance</p>
+            <p className="text-lg font-bold text-primary">{routeDistance}</p>
+          </div>
+          <div className="bg-bg-elevated/95 backdrop-blur-xl border border-primary/30 rounded-xl px-4 py-2 shadow-lg">
+            <p className="text-xs text-slate-400">Est. Time</p>
+            <p className="text-lg font-bold text-primary">{routeDuration}</p>
+          </div>
+          <button
+            onClick={handleCloseDirections}
+            className="bg-red-500/90 backdrop-blur-xl text-white px-4 py-2 rounded-xl hover:bg-red-600 transition-all font-semibold"
+          >
+            ✕ Clear Route
+          </button>
+        </div>
+      )}
+      
+      {/* Directions Search */}
+      {selectedPlace && (
+        <DirectionsSearch
+          isOpen={directionsOpen}
+          onClose={handleCloseDirections}
+          destination={{
+            lat: selectedPlace.location?.lat || 0,
+            lng: selectedPlace.location?.lng || 0,
+            name: selectedPlace.title || 'Place'
+          }}
+          onRouteCalculated={handleRouteCalculated}
+        />
+      )}
+      
+      {/* Going Dialog */}
+      {selectedPlace && (
+        <GoingDialog
+          isOpen={goingDialogOpen}
+          onClose={() => {
+            setGoingDialogOpen(false)
+            setSelectedPlace(null)
+          }}
+          placeName={selectedPlace.title || 'Place'}
+          onConfirm={async (data) => {
+            if (!user) return
+            try {
+              const userDoc = await getDocs(query(collection(db, 'user_profiles'), where('userId', '==', user.uid)))
+              const userData = userDoc.docs[0]?.data()
+              await addDoc(collection(db, 'place_attendance'), {
+                placeId: selectedPlace.placeId,
+                userId: user.uid,
+                userName: userData?.displayName || user.displayName || 'Anonymous',
+                userAvatar: userData?.avatarEmoji || '👤',
+                goingDate: data.date,
+                goingTime: data.time,
+                visibility: data.visibility,
+                status: 'going',
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              })
+              alert('RSVP confirmed!')
+            } catch (error) {
+              console.error('Error:', error)
+            }
+          }}
+        />
+      )}
     </div>
   )
 }

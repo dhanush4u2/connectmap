@@ -281,35 +281,48 @@ button, a, input {
 
 /* Modern popup styles */
 .leaflet-popup-content-wrapper {
-  background: rgba(26, 15, 10, 0.98) !important;
+  background: rgba(15, 10, 8, 0.98) !important;
   color: #fff;
-  border-radius: 16px !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6) !important;
-  border: 1px solid rgba(255, 107, 44, 0.2) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.8) !important;
+  border: 1px solid rgba(255, 107, 44, 0.3) !important;
   padding: 0 !important;
   backdrop-filter: blur(20px);
+  max-width: 360px !important;
 }
 
 .leaflet-popup-tip {
-  background: rgba(26, 15, 10, 0.98) !important;
+  background: rgba(15, 10, 8, 0.98) !important;
   box-shadow: none !important;
 }
 
 .leaflet-popup-close-button {
-  color: #ff6b2c !important;
-  font-size: 20px !important;
+  color: #fff !important;
+  background: rgba(255, 107, 44, 0.2) !important;
+  font-size: 18px !important;
   font-weight: bold !important;
-  padding: 8px 12px !important;
-  opacity: 0.7 !important;
+  padding: 4px !important;
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  opacity: 0.9 !important;
+  top: 8px !important;
+  right: 8px !important;
+  transition: all 0.2s ease !important;
 }
 
 .leaflet-popup-close-button:hover {
+  background: rgba(255, 107, 44, 0.4) !important;
   color: #ffb340 !important;
   opacity: 1 !important;
+  transform: scale(1.1) !important;
 }
 
 .popup-content {
-  padding: 16px;
+  padding: 18px;
 }
 
 .popup-title {
@@ -357,6 +370,50 @@ button, a, input {
   font-size: 11px;
   color: #94a3b8;
   margin-bottom: 12px;
+}
+
+.popup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.popup-btn {
+  flex: 1;
+  min-width: 80px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.popup-btn-primary {
+  background: linear-gradient(135deg, #ff6b2c 0%, #ffb340 100%);
+  color: white;
+}
+
+.popup-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 107, 44, 0.4);
+}
+
+.popup-btn-secondary {
+  background: rgba(255, 107, 44, 0.1);
+  border: 1px solid rgba(255, 107, 44, 0.3);
+  color: #ff6b2c;
+}
+
+.popup-btn-secondary:hover {
+  background: rgba(255, 107, 44, 0.2);
+  border-color: #ff6b2c;
 }
 
 .popup-link {

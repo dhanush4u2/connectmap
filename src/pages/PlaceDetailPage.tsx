@@ -4,7 +4,6 @@ import { doc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs
 import { db } from '../lib/firebase'
 import { useAuthState } from '../hooks/useAuthState'
 import { GoingDialog } from '../components/GoingDialog'
-import { DirectionsPanel } from '../components/DirectionsPanel'
 import { SharePanel } from '../components/SharePanel'
 import type { PlaceAttendance } from '../types'
 
@@ -232,19 +231,23 @@ export function PlaceDetailPage() {
       <div className="relative h-80 md:h-96 bg-gradient-warm">
         {place.images && place.images.length > 0 ? (
           <>
-            <img
-              src={place.images[currentImageIndex]}
-              alt={place.title}
-              className="w-full h-full object-cover"
-            />
+            <div className="relative w-full h-full">
+              <img
+                src={place.images[currentImageIndex]}
+                alt={place.title}
+                className="w-full h-full object-cover"
+              />
+              {/* Dark gradient overlay to protect text */}
+              <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/70"></div>
+            </div>
             {place.images.length > 1 && (
-              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2">
+              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2 z-10">
                 {place.images.map((_, idx) => (
                   <button
                     key={idx}
                     onClick={() => setCurrentImageIndex(idx)}
                     className={`h-2 rounded-full transition-all ${
-                      idx === currentImageIndex ? 'w-8 bg-white' : 'w-2 bg-white/50'
+                      idx === currentImageIndex ? 'w-8 bg-white shadow-lg' : 'w-2 bg-white/50'
                     }`}
                   />
                 ))}
@@ -252,7 +255,7 @@ export function PlaceDetailPage() {
             )}
           </>
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-8xl">
+          <div className="w-full h-full flex items-center justify-center text-8xl bg-gradient-to-br from-bg-warm to-bg">
             {categoryEmoji[place.category] || '📍'}
           </div>
         )}
@@ -260,7 +263,7 @@ export function PlaceDetailPage() {
         {/* Back Button */}
         <button
           onClick={() => navigate(-1)}
-          className="absolute top-4 left-4 bg-black/50 backdrop-blur-sm text-white p-3 rounded-full hover:bg-black/70 transition-all"
+          className="absolute top-4 left-4 bg-black/60 backdrop-blur-md text-white p-3 rounded-full hover:bg-black/80 transition-all shadow-lg z-20"
         >
           <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -269,9 +272,9 @@ export function PlaceDetailPage() {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-4xl mx-auto px-4 -mt-12">
+      <div className="max-w-4xl mx-auto px-4 -mt-16">
         {/* Card Container */}
-        <div className="bg-bg-elevated rounded-3xl border border-primary/20 shadow-2xl overflow-hidden">
+        <div className="bg-bg-elevated rounded-3xl border border-primary/20 shadow-2xl overflow-hidden relative z-10">
           {/* Header Section */}
           <div className="p-6 md:p-8">
             <div className="flex items-start justify-between mb-4">
@@ -415,15 +418,34 @@ export function PlaceDetailPage() {
         placeName={place.title}
       />
       
-      <DirectionsPanel
-        isOpen={showDirections}
-        onClose={() => setShowDirections(false)}
-        destination={{
-          lat: place.location.lat,
-          lng: place.location.lng,
-          name: place.title,
-        }}
-      />
+      {/* Note: Directions opens in map view, not here */}
+      {showDirections && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-bg-elevated rounded-2xl p-6 max-w-md w-full border border-primary/20 shadow-2xl">
+            <h3 className="text-xl font-bold text-gradient mb-3">Get Directions</h3>
+            <p className="text-slate-300 mb-6">
+              Directions feature works best on the map view. Click a place marker on the map and use the Directions button to see the route.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowDirections(false)
+                  navigate('/')
+                }}
+                className="flex-1 py-3 px-4 rounded-xl bg-gradient-warm text-white font-semibold shadow-glow hover:shadow-glow-lg transition-all"
+              >
+                Go to Map
+              </button>
+              <button
+                onClick={() => setShowDirections(false)}
+                className="py-3 px-4 rounded-xl bg-primary/10 border border-primary/20 text-slate-300 font-semibold hover:bg-primary/20 transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       <SharePanel
         isOpen={showShare}

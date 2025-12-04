@@ -18,14 +18,12 @@ export function ProfilePage() {
   const [error, setError] = useState('')
   const [authLoading, setAuthLoading] = useState(false)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
-  const [profileLoading, setProfileLoading] = useState(true)
   const [showEditModal, setShowEditModal] = useState(false)
 
   // Load user profile data and check onboarding status
   useEffect(() => {
     async function loadProfile() {
       if (!user) {
-        setProfileLoading(false)
         return
       }
 
@@ -49,8 +47,6 @@ export function ProfilePage() {
         }
       } catch (error) {
         console.error('Error loading profile:', error)
-      } finally {
-        setProfileLoading(false)
       }
     }
 
