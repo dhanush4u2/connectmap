@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
-import { collection, query, where, getDocs, doc, updateDoc, addDoc, serverTimestamp, deleteDoc } from 'firebase/firestore'
+import { collection, query, where, getDocs, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuthState } from '../hooks/useAuthState'
+import { useAdminCheck } from '../hooks/useAdminCheck'
 import { useNavigate } from 'react-router-dom'
+import { CategoryManager } from '../components/CategoryManager'
+import { AdminManager } from '../components/AdminManager'
 
 type Submission = {
   id: string
@@ -12,19 +15,26 @@ type Submission = {
   submittedAt: any
 }
 
+type Tab = 'submissions' | 'categories' | 'admins'
+
 export function AdminDashboardPage() {
   const { user, loading: authLoading } = useAuthState()
+  const { isAdmin, loading: adminLoading } = useAdminCheck()
   const navigate = useNavigate()
+  const [activeTab, setActiveTab] = useState<Tab>('submissions')
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
 
   useEffect(() => {
-    // Simple admin check (you should use Firebase custom claims in production)
-    if (!authLoading && !user) {
-      navigate('/profile')
+    if (!authLoading && !adminLoading) {
+      if (!user) {
+        navigate('/profile')
+      } else if (!isAdmin) {
+        navigate('/')
+      }
     }
-  }, [user, authLoading, navigate])
+  }, [user, authLoading, isAdmin, adminLoading, navigate])
 
   useEffect(() => {
     async function fetchSubmissions() {
@@ -96,7 +106,7 @@ export function AdminDashboardPage() {
     }
   }
 
-  if (authLoading || loading) {
+  if (authLoading || adminLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-[calc(100vh-8rem)]">
         <div className="h-12 w-12 rounded-full border-4 border-primary/30 border-t-primary animate-spin" />
@@ -105,12 +115,82 @@ export function AdminDashboardPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-4rem)]">
+    <div className="flex flex-col h-[calc(100vh-4rem)]">
+      {/* Header with Tabs */}
+      <div className="border-b border-primary/20 bg-bg-elevated">
+        <div className="p-4">
+          <h1 className="text-xl font-bold text-gradient mb-4">Admin Dashboard</h1>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setActiveTab('submissions')}
+              className={`px-6 py-2.5 rounded-full text-sm font-semibold transition ${
+                activeTab === 'submissions'
+                  ? 'bg-gradient-warm text-white shadow-glow'
+                  : 'bg-bg-warm hover:bg-primary/10 border border-primary/20'
+              }`}
+            >
+              📋 Submissions {submissions.length > 0 && `(${submissions.length})`}
+            </button>
+            <button
+              onClick={() => setActiveTab('categories')}
+              className={`px-6 py-2.5 rounded-full text-sm font-semibold transition ${
+                activeTab === 'categories'
+                  ? 'bg-gradient-warm text-white shadow-glow'
+                  : 'bg-bg-warm hover:bg-primary/10 border border-primary/20'
+              }`}
+            >
+              🏷️ Categories
+            </button>
+            <button
+              onClick={() => setActiveTab('admins')}
+              className={`px-6 py-2.5 rounded-full text-sm font-semibold transition ${
+                activeTab === 'admins'
+                  ? 'bg-gradient-warm text-white shadow-glow'
+                  : 'bg-bg-warm hover:bg-primary/10 border border-primary/20'
+              }`}
+            >
+              👥 Admins
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Tab Content */}
+      <div className="flex-1 overflow-hidden">
+        {activeTab === 'submissions' && <SubmissionsTab 
+          submissions={submissions}
+          selectedSubmission={selectedSubmission}
+          setSelectedSubmission={setSelectedSubmission}
+          onApprove={handleApprove}
+          onReject={handleReject}
+        />}
+        {activeTab === 'categories' && <CategoryManager />}
+        {activeTab === 'admins' && <AdminManager />}
+      </div>
+    </div>
+  )
+}
+
+// Submissions Tab Component
+function SubmissionsTab({
+  submissions,
+  selectedSubmission,
+  setSelectedSubmission,
+  onApprove,
+  onReject,
+}: {
+  submissions: Submission[]
+  selectedSubmission: Submission | null
+  setSelectedSubmission: (s: Submission | null) => void
+  onApprove: (s: Submission) => void
+  onReject: (s: Submission) => void
+}) {
+  return (
+    <div className="flex h-full">
       {/* Sidebar - Submissions List */}
       <div className="w-80 border-r border-primary/20 bg-bg-elevated overflow-y-auto">
         <div className="p-4 border-b border-primary/20">
-          <h1 className="text-xl font-bold text-gradient mb-1">Admin Dashboard</h1>
-          <p className="text-xs text-slate-400">Moderation Queue</p>
+          <p className="text-xs text-slate-400">Pending Moderation</p>
         </div>
 
         <div className="p-4 space-y-3">
@@ -163,13 +243,13 @@ export function AdminDashboardPage() {
                 </div>
                 <div className="flex gap-3">
                   <button
-                    onClick={() => handleApprove(selectedSubmission)}
+                    onClick={() => onApprove(selectedSubmission)}
                     className="btn-primary"
                   >
                     ✅ Approve
                   </button>
                   <button
-                    onClick={() => handleReject(selectedSubmission)}
+                    onClick={() => onReject(selectedSubmission)}
                     className="px-6 py-2.5 rounded-full border-2 border-red-500/40 bg-red-500/10 text-sm font-semibold text-red-400 hover:bg-red-500/20 transition"
                   >
                     ❌ Reject

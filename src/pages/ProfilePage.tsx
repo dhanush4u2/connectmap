@@ -1,15 +1,61 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuthState } from '../hooks/useAuthState'
-import { signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth'
-import { auth } from '../lib/firebase'
+import { signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth'
+import { auth, db } from '../lib/firebase'
+import { doc, getDoc } from 'firebase/firestore'
+import type { UserProfile } from '../types'
+import { calculateXPForNextLevel, getUserAchievements } from '../lib/xpSystem'
+import { EditProfileModal } from '../components/EditProfileModal'
+import { SavedPlaces } from '../components/SavedPlaces'
 
 export function ProfilePage() {
   const { user, loading } = useAuthState()
+  const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isSignUp, setIsSignUp] = useState(false)
   const [error, setError] = useState('')
   const [authLoading, setAuthLoading] = useState(false)
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
+  const [profileLoading, setProfileLoading] = useState(true)
+  const [showEditModal, setShowEditModal] = useState(false)
+
+  // Load user profile data and check onboarding status
+  useEffect(() => {
+    async function loadProfile() {
+      if (!user) {
+        setProfileLoading(false)
+        return
+      }
+
+      try {
+        const profileRef = doc(db, 'user_profiles', user.uid)
+        const profileSnap = await getDoc(profileRef)
+        
+        if (profileSnap.exists()) {
+          const profile = profileSnap.data() as UserProfile
+          setUserProfile(profile)
+          
+          // If profile exists but onboarding not completed, redirect to onboarding
+          if (!profile.hasCompletedOnboarding) {
+            console.log('Profile exists but onboarding not completed, redirecting...')
+            navigate('/onboarding', { replace: true })
+          }
+        } else {
+          // No profile exists, needs onboarding
+          console.log('No profile found, redirecting to onboarding...')
+          navigate('/onboarding', { replace: true })
+        }
+      } catch (error) {
+        console.error('Error loading profile:', error)
+      } finally {
+        setProfileLoading(false)
+      }
+    }
+
+    loadProfile()
+  }, [user, navigate])
 
   const handleGoogleSignIn = async () => {
     setError('')
@@ -52,64 +98,232 @@ export function ProfilePage() {
     )
   }
 
+  const handleProfileUpdate = async () => {
+    if (!user) return
+    // Reload profile data
+    try {
+      const profileRef = doc(db, 'user_profiles', user.uid)
+      const profileSnap = await getDoc(profileRef)
+      if (profileSnap.exists()) {
+        setUserProfile(profileSnap.data() as UserProfile)
+      }
+    } catch (error) {
+      console.error('Error reloading profile:', error)
+    }
+  }
+
   if (user) {
+    const xp = userProfile?.xp || 0
+    const level = userProfile?.level || 1
+    const xpProgress = calculateXPForNextLevel(xp)
+    const achievements = getUserAchievements(userProfile?.achievements || [])
+    
     return (
-      <div className="mx-auto max-w-3xl p-6">
-        <div className="card-premium p-8">
-          <div className="flex items-start gap-6 mb-8">
-            {user.photoURL ? (
-              <img src={user.photoURL} alt={user.displayName || 'User'} className="h-20 w-20 rounded-2xl shadow-glow" />
+      <>
+      <div className="mx-auto max-w-4xl p-4 md:p-6 space-y-6">
+        {/* Profile Header */}
+        <div className="card-premium p-6 md:p-8">
+          <div className="flex flex-col sm:flex-row items-start gap-6">
+            {userProfile?.avatarEmoji ? (
+              <div className="h-20 w-20 rounded-2xl bg-gradient-warm flex items-center justify-center text-4xl shadow-glow ring-2 ring-primary/30">
+                {userProfile.avatarEmoji}
+              </div>
+            ) : user.photoURL ? (
+              <img 
+                src={user.photoURL} 
+                alt={user.displayName || 'User'} 
+                className="h-20 w-20 rounded-2xl shadow-glow object-cover ring-2 ring-primary/30"
+                referrerPolicy="no-referrer"
+              />
             ) : (
               <div className="h-20 w-20 rounded-2xl bg-gradient-warm flex items-center justify-center text-3xl font-bold text-white shadow-glow">
-                {user.displayName?.[0] || user.email?.[0] || 'U'}
+                {user.displayName?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || 'U'}
               </div>
             )}
             <div className="flex-1">
-              <h1 className="text-2xl font-bold text-gradient mb-1">
-                {user.displayName || 'Anonymous User'}
-              </h1>
-              <p className="text-slate-400 text-sm mb-4">{user.email}</p>
+              <div className="flex items-center gap-3 mb-1">
+                <h1 className="text-xl md:text-2xl font-bold text-gradient">
+                  {user.displayName || 'Anonymous User'}
+                </h1>
+                <span className="px-3 py-1 rounded-full bg-primary/20 text-primary text-xs font-semibold">
+                  Level {level}
+                </span>
+              </div>
+              <p className="text-slate-400 text-xs md:text-sm mb-1">
+                @{userProfile?.username || user.email?.split('@')[0]}
+              </p>
+              {userProfile?.bio && (
+                <p className="text-slate-500 text-xs mb-2">{userProfile.bio}</p>
+              )}
+              <p className="text-slate-500 text-xs mb-4">{user.email}</p>
+              
+              {/* XP Progress Bar */}
+              <div className="mb-4">
+                <div className="flex justify-between text-xs text-slate-400 mb-1">
+                  <span>{xpProgress.current} XP</span>
+                  <span>{xpProgress.needed} XP to Level {level + 1}</span>
+                </div>
+                <div className="h-2 bg-bg-warm rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-warm transition-all duration-500"
+                    style={{ width: `${xpProgress.progress}%` }}
+                  />
+                </div>
+              </div>
+
               <div className="flex gap-3">
-                <div className="px-4 py-2 rounded-xl bg-primary/10 border border-primary/20">
-                  <p className="text-xs text-slate-400">Contributions</p>
-                  <p className="text-lg font-bold text-primary">0</p>
-                </div>
-                <div className="px-4 py-2 rounded-xl bg-primary/10 border border-primary/20">
-                  <p className="text-xs text-slate-400">Reviews</p>
-                  <p className="text-lg font-bold text-primary">0</p>
-                </div>
-                <div className="px-4 py-2 rounded-xl bg-primary/10 border border-primary/20">
-                  <p className="text-xs text-slate-400">Saved</p>
-                  <p className="text-lg font-bold text-primary">0</p>
-                </div>
+                <button
+                  onClick={() => setShowEditModal(true)}
+                  className="text-sm text-primary hover:text-primary-light transition font-medium"
+                >
+                  ✏️ Edit Profile
+                </button>
+                <button
+                  onClick={() => signOut(auth)}
+                  className="text-sm text-slate-400 hover:text-red-400 transition"
+                >
+                  Sign Out
+                </button>
               </div>
             </div>
           </div>
+        </div>
 
-          <div className="border-t border-primary/20 pt-6">
-            <h2 className="text-lg font-semibold text-slate-100 mb-4">Your Activity</h2>
-            <div className="text-center py-12 text-slate-500">
-              <p className="text-4xl mb-2">📍</p>
-              <p className="text-sm">No contributions yet</p>
-              <p className="text-xs text-slate-600 mt-1">Share your first spot to get started!</p>
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="card-premium p-4">
+            <p className="text-xs text-slate-400 mb-1">Total XP</p>
+            <p className="text-2xl font-bold text-gradient">{xp}</p>
+          </div>
+          <div className="card-premium p-4">
+            <p className="text-xs text-slate-400 mb-1">Places</p>
+            <p className="text-2xl font-bold text-gradient">{userProfile?.placesCount || 0}</p>
+          </div>
+          <div className="card-premium p-4">
+            <p className="text-xs text-slate-400 mb-1">Saves</p>
+            <p className="text-2xl font-bold text-gradient">{userProfile?.savedPlaces?.length || 0}</p>
+          </div>
+          <div className="card-premium p-4">
+            <p className="text-xs text-slate-400 mb-1">Friends</p>
+            <p className="text-2xl font-bold text-gradient">{userProfile?.friendCount || 0}</p>
+          </div>
+        </div>
+
+        {/* Levels Breakdown */}
+        <div className="card-premium p-6">
+          <h2 className="text-lg font-semibold text-slate-100 mb-4">Your Levels</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center p-4 rounded-xl bg-bg-warm">
+              <div className="text-3xl mb-2">🍕</div>
+              <p className="text-xs text-slate-400 mb-1">Foodie</p>
+              <p className="text-lg font-bold text-primary">Level {userProfile?.foodieLevel || 1}</p>
             </div>
+            <div className="text-center p-4 rounded-xl bg-bg-warm">
+              <div className="text-3xl mb-2">🗺️</div>
+              <p className="text-xs text-slate-400 mb-1">Explorer</p>
+              <p className="text-lg font-bold text-primary">Level {userProfile?.explorerLevel || 1}</p>
+            </div>
+            <div className="text-center p-4 rounded-xl bg-bg-warm">
+              <div className="text-3xl mb-2">✍️</div>
+              <p className="text-xs text-slate-400 mb-1">Curator</p>
+              <p className="text-lg font-bold text-primary">Level {userProfile?.curatorLevel || 1}</p>
+            </div>
+            <div className="text-center p-4 rounded-xl bg-bg-warm">
+              <div className="text-3xl mb-2">🤝</div>
+              <p className="text-xs text-slate-400 mb-1">Social</p>
+              <p className="text-lg font-bold text-primary">Level {userProfile?.socialLevel || 1}</p>
+            </div>
+          </div>
+          <div className="mt-4 text-xs text-slate-500 text-center">
+            <p>💡 Earn XP: Review places (+120), Add places (+360), Make friends (+60)</p>
+          </div>
+        </div>
+
+        {/* Achievements */}
+        <div className="card-premium p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-slate-100">Achievements</h2>
+            <span className="px-3 py-1 rounded-full bg-primary/20 text-primary text-xs font-semibold">
+              {userProfile?.unlockedAchievements || 0}/{userProfile?.totalAchievements || 15}
+            </span>
+          </div>
+          
+          {achievements.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {achievements.map(achievement => (
+                <div 
+                  key={achievement.id}
+                  className="flex items-center gap-3 p-4 rounded-xl bg-bg-warm border border-primary/20"
+                >
+                  <div className="text-3xl">{achievement.emoji}</div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-slate-100 text-sm">{achievement.title}</p>
+                    <p className="text-xs text-slate-400">{achievement.description}</p>
+                    <p className="text-xs text-accent-yellow mt-1">+{achievement.xpReward} XP</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 text-slate-500">
+              <p className="text-4xl mb-3">🏆</p>
+              <p className="text-sm mb-1">No achievements yet</p>
+              <p className="text-xs text-slate-600">Start exploring to unlock achievements!</p>
+            </div>
+          )}
+          
+          <div className="mt-6 p-4 rounded-xl bg-primary/10 border border-primary/20 text-center">
+            <p className="text-xs text-slate-400">
+              <span className="font-semibold text-accent-yellow">Coming Soon:</span> More achievements, badges, and rewards!
+            </p>
+          </div>
+        </div>
+
+        {/* Saved Places */}
+        <div className="card-premium p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-slate-100">Saved Places</h2>
+            <span className="px-3 py-1 rounded-full bg-primary/20 text-primary text-xs font-semibold">
+              {userProfile?.savedPlaces?.length || 0}
+            </span>
+          </div>
+          <SavedPlaces userId={user.uid} />
+        </div>
+
+        {/* Activity Feed */}
+        <div className="card-premium p-6">
+          <h2 className="text-lg font-semibold text-slate-100 mb-4">Recent Activity</h2>
+          <div className="text-center py-12 text-slate-500">
+            <p className="text-4xl mb-2">📍</p>
+            <p className="text-sm">No activity yet</p>
+            <p className="text-xs text-slate-600 mt-1">Share your first spot to get started!</p>
           </div>
         </div>
       </div>
+      
+      {showEditModal && (
+        <EditProfileModal
+          user={user}
+          userProfile={userProfile}
+          onClose={() => setShowEditModal(false)}
+          onUpdate={handleProfileUpdate}
+        />
+      )}
+      </>
     )
   }
 
   return (
-    <div className="mx-auto max-w-md p-6">
-      <div className="card-premium p-8">
-        <div className="text-center mb-8">
-          <div className="inline-flex h-16 w-16 rounded-2xl bg-gradient-warm items-center justify-center mb-4 shadow-glow">
-            <span className="text-3xl font-bold text-white">C</span>
+    <div className="mx-auto max-w-md p-4 md:p-6">
+      <div className="card-premium p-6 md:p-8">
+        <div className="text-center mb-6 md:mb-8">
+          <div className="inline-flex h-14 w-14 md:h-16 md:w-16 rounded-2xl bg-gradient-warm items-center justify-center mb-4 shadow-glow">
+            <span className="text-2xl md:text-3xl font-bold text-white">C</span>
           </div>
-          <h1 className="text-2xl font-bold text-gradient mb-2">
+          <h1 className="text-xl md:text-2xl font-bold text-gradient mb-2">
             {isSignUp ? 'Join Connect BLR' : 'Welcome Back'}
           </h1>
-          <p className="text-sm text-slate-400">
+          <p className="text-xs md:text-sm text-slate-400">
             {isSignUp ? 'Create an account to share and discover places' : 'Sign in to continue exploring'}
           </p>
         </div>

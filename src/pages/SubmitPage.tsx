@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthState } from '../hooks/useAuthState'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, addDoc, serverTimestamp, doc, updateDoc, increment } from 'firebase/firestore'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { db, storage } from '../lib/firebase'
+import { awardPlaceXP } from '../lib/xpSystem'
 
 const categories = [
   { id: 'food_cafe', label: 'Food & Café', emoji: '🍽️' },
@@ -105,8 +106,29 @@ export function SubmitPage() {
 
       await addDoc(collection(db, 'moderation_queue'), submissionData)
       
-      // Show success message
-      alert('🎉 Submission successful! Your place will be reviewed by our team.')
+      // Update user stats and award XP
+      try {
+        const userRef = doc(db, 'user_profiles', user.uid)
+        await updateDoc(userRef, {
+          placesCount: increment(1),
+          updatedAt: serverTimestamp()
+        })
+        
+        // Award XP for adding a new place (360 XP)
+        const result = await awardPlaceXP(user.uid)
+        
+        // Show success message with XP
+        if (result.leveledUp) {
+          alert(`🎉 Submission successful! You leveled up to Level ${result.newLevel}! (+360 XP)`)
+        } else {
+          alert('🎉 Submission successful! +360 XP earned. Your place will be reviewed by our team.')
+        }
+      } catch (xpError) {
+        console.error('Error awarding XP:', xpError)
+        // Still show success even if XP fails
+        alert('🎉 Submission successful! Your place will be reviewed by our team.')
+      }
+      
       navigate('/')
     } catch (error: any) {
       console.error('Submission error:', error)

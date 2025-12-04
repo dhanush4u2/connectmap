@@ -1,0 +1,88 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Places - public read, authenticated write
+    match /places/{placeId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if request.auth != null;
+    }
+    
+    // Moderation Queue - authenticated users only
+    match /moderation_queue/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    
+    // Reviews - public read, authenticated write
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+    
+    // User Profiles - users can read their own and others' public profiles
+    match /user_profiles/{userId} {
+      allow read: if true; // Allow reading any profile (for friends, social features)
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Taste Profiles - users can read/write their own
+    match /taste_profiles/{profileId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+    
+    // User Onboarding Events - users can only access their own
+    match /user_onboarding_events/{userId}/{document=**} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Admin Roles - read-only, managed server-side
+    match /admin_roles/{userId} {
+      allow read: if true;
+      allow write: if false; // No client-side writes
+    }
+    
+    // Friend Requests
+    match /friend_requests/{requestId} {
+      allow read: if request.auth != null && 
+                     (request.auth.uid == resource.data.fromUserId || 
+                      request.auth.uid == resource.data.toUserId);
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.fromUserId;
+      allow update: if request.auth != null && request.auth.uid == resource.data.toUserId;
+      allow delete: if request.auth != null && 
+                       (request.auth.uid == resource.data.fromUserId || 
+                        request.auth.uid == resource.data.toUserId);
+    }
+    
+    // Place Attendance - tracks who's going to places/events
+    match /place_attendance/{attendanceId} {
+      allow read: if true; // Public and friends can see based on visibility field
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      allow update: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+    
+    // Place Saves - tracks who saved a place
+    match /place_saves/{saveId} {
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+    
+    // Place Attendance Stats - aggregated data for efficient marker display
+    match /place_attendance_stats/{placeId} {
+      allow read: if true; // Public read for map markers
+      allow write: if false; // Updated via Cloud Functions only
+    }
+  }
+}

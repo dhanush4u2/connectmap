@@ -1,52 +1,32 @@
 import 'leaflet/dist/leaflet.css'
 import { useEffect, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
-import { Icon, divIcon } from 'leaflet'
+import { divIcon } from 'leaflet'
 import { collection, query, where, getDocs } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { PlaceMarker } from './PlaceMarker'
+import type { PlaceAttendanceStats } from '../types'
 
+// Flexible Place type - all fields except placeId are optional
 type Place = {
   placeId: string
-  title: string
-  description: string
-  category: string
-  tags: string[]
-  location: { lat: number; lng: number }
-  address: string
-  images: string[]
-  avgRating: number
-  reactionCount: { like: number; love: number; save: number }
+  title?: string
+  description?: string
+  category?: string
+  tags?: string[]
+  location?: { lat?: number; lng?: number }
+  address?: string
+  images?: string[]
+  avgRating?: number
+  reactionCount?: { like?: number; love?: number; save?: number }
+  attendanceStats?: PlaceAttendanceStats
 }
 
 type MapViewProps = {
   onBoundsChange?: (bounds: any) => void
   selectedCategory?: string
 }
-
-// Custom marker component
-const CustomMarker = () => (
-  <div
-    style={{
-      width: '32px',
-      height: '32px',
-      background: 'linear-gradient(135deg, #ff6b2c 0%, #ffb340 100%)',
-      borderRadius: '50% 50% 50% 0',
-      transform: 'rotate(-45deg)',
-      border: '3px solid #fff',
-      boxShadow: '0 4px 12px rgba(255, 107, 44, 0.5)',
-    }}
-  />
-)
-
-// Create custom icon
-const customIcon = divIcon({
-  html: renderToStaticMarkup(<CustomMarker />),
-  className: 'custom-marker',
-  iconSize: [32, 32],
-  iconAnchor: [16, 32],
-  popupAnchor: [0, -32],
-})
 
 function MapBoundsHandler({ onBoundsChange }: { onBoundsChange?: (bounds: any) => void }) {
   const map = useMap()
@@ -72,7 +52,7 @@ export function MapView({ onBoundsChange, selectedCategory }: MapViewProps) {
   const [places, setPlaces] = useState<Place[]>([])
   const [mapKey, setMapKey] = useState(0)
 
-  // Fetch places from Firestore
+  // Fetch places from Firestore with flexible data handling
   useEffect(() => {
     async function fetchPlaces() {
       try {
@@ -90,7 +70,45 @@ export function MapView({ onBoundsChange, selectedCategory }: MapViewProps) {
         
         const fetchedPlaces: Place[] = []
         snapshot.forEach((doc) => {
-          fetchedPlaces.push({ ...doc.data(), placeId: doc.id } as Place)
+          const data = doc.data()
+          // Only add places that have valid location coordinates
+          if (data.location?.lat && data.location?.lng) {
+            fetchedPlaces.push({ 
+              placeId: doc.id,
+              title: data.title || 'Untitled Place',
+              description: data.description || '',
+              category: data.category || 'other',
+              tags: Array.isArray(data.tags) ? data.tags : [],
+              location: data.location,
+              address: data.address || '',
+              images: Array.isArray(data.images) ? data.images : [],
+              avgRating: typeof data.avgRating === 'number' ? data.avgRating : 0,
+              reactionCount: {
+                like: data.reactionCount?.like || 0,
+                love: data.reactionCount?.love || 0,
+                save: data.reactionCount?.save || 0,
+              }
+            })
+          } else {
+            console.warn(`⚠️ Skipping place ${doc.id} - missing location data`)
+          }
+        })
+        
+        // Fetch attendance stats for each place
+        const attendanceStatsCol = collection(db, 'place_attendance_stats')
+        const statsSnapshot = await getDocs(attendanceStatsCol)
+        const statsMap = new Map<string, PlaceAttendanceStats>()
+        
+        statsSnapshot.forEach((doc) => {
+          statsMap.set(doc.id, doc.data() as PlaceAttendanceStats)
+        })
+        
+        // Attach attendance stats to places
+        fetchedPlaces.forEach((place) => {
+          const stats = statsMap.get(place.placeId)
+          if (stats) {
+            place.attendanceStats = stats
+          }
         })
         
         setPlaces(fetchedPlaces)
@@ -108,76 +126,97 @@ export function MapView({ onBoundsChange, selectedCategory }: MapViewProps) {
   }, [])
 
   return (
-    <div className="h-full w-full rounded-3xl border border-primary/20 bg-bg-warm shadow-card overflow-hidden">
+    <div className="h-full w-full rounded-3xl border border-primary/10 bg-bg-warm shadow-card overflow-hidden">
       <MapContainer
         key={mapKey}
-        center={[12.9716, 77.5946]}
-        zoom={12}
+        center={[12.9716, 77.5946]} // Bangalore coordinates
+        zoom={13}
         scrollWheelZoom={true}
+        zoomControl={true}
         style={{ height: '100%', width: '100%' }}
-        className="leaflet-container"
+        className="leaflet-container-modern"
       >
+        {/* Minimal, clean map tiles */}
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          maxZoom={19}
         />
         
         <MapBoundsHandler onBoundsChange={onBoundsChange} />
         
-        {places.map((place) => (
-          <Marker
-            key={place.placeId}
-            position={[place.location.lat, place.location.lng]}
-            icon={customIcon}
-          >
-            <Popup>
-              <div style={{ padding: '8px', minWidth: '200px' }}>
-                <h3 style={{ margin: '0 0 8px', fontSize: '16px', fontWeight: '700', color: '#ff6b2c' }}>
-                  {place.title}
-                </h3>
-                <p style={{ margin: '0 0 8px', fontSize: '13px', color: '#64748b', lineHeight: '1.4' }}>
-                  {place.description}
-                </p>
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
-                  {place.tags.slice(0, 3).map((tag) => (
-                    <span
-                      key={tag}
-                      style={{
-                        padding: '2px 8px',
-                        background: 'rgba(255, 107, 44, 0.1)',
-                        border: '1px solid rgba(255, 107, 44, 0.3)',
-                        borderRadius: '12px',
-                        fontSize: '11px',
-                        color: '#ff6b2c',
-                      }}
-                    >
-                      {tag}
-                    </span>
-                  ))}
+        {places.map((place) => {
+          // Safety check for location
+          if (!place.location?.lat || !place.location?.lng) return null
+          
+          const likes = (place.reactionCount?.like || 0) + (place.reactionCount?.love || 0)
+          const rating = place.avgRating || 0
+          const tags = place.tags || []
+          
+          // Get attendance data
+          const attendees = place.attendanceStats?.recentAttendees || []
+          const totalGoing = place.attendanceStats?.totalGoing || 0
+          
+          // Create custom icon for this place
+          const customIcon = divIcon({
+            html: renderToStaticMarkup(
+              <PlaceMarker
+                attendees={attendees}
+                totalGoing={totalGoing}
+                category={place.category}
+              />
+            ),
+            className: 'custom-marker-container',
+            iconSize: [totalGoing > 0 ? 48 + Math.min(totalGoing * 2, 32) : 40, totalGoing > 0 ? 48 + Math.min(totalGoing * 2, 32) : 40],
+            iconAnchor: [totalGoing > 0 ? 24 + Math.min(totalGoing, 16) : 20, totalGoing > 0 ? 24 + Math.min(totalGoing, 16) : 20],
+            popupAnchor: [0, -(totalGoing > 0 ? 24 + Math.min(totalGoing, 16) : 20)],
+          })
+          
+          return (
+            <Marker
+              key={place.placeId}
+              position={[place.location.lat, place.location.lng]}
+              icon={customIcon}
+            >
+              <Popup className="modern-popup" maxWidth={320}>
+                <div className="popup-content">
+                  <h3 className="popup-title">
+                    {place.title || 'Untitled Place'}
+                  </h3>
+                  {place.description && (
+                    <p className="popup-description">
+                      {place.description}
+                    </p>
+                  )}
+                  {tags.length > 0 && (
+                    <div className="popup-tags">
+                      {tags.slice(0, 3).map((tag, idx) => (
+                        <span key={idx} className="popup-tag">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="popup-stats">
+                    {totalGoing > 0 && <span>👥 {totalGoing} going</span>}
+                    {likes > 0 && <span>❤️ {likes}</span>}
+                    {rating > 0 && <span>⭐ {rating.toFixed(1)}</span>}
+                  </div>
+                  <a
+                    href={`/place/${place.placeId}`}
+                    className="popup-link"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      window.location.href = `/place/${place.placeId}`
+                    }}
+                  >
+                    View Details →
+                  </a>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>
-                  <span>❤️ {place.reactionCount.like + place.reactionCount.love}</span>
-                  <span>⭐ {place.avgRating.toFixed(1)}</span>
-                </div>
-                <a
-                  href={`/place/${place.placeId}`}
-                  style={{
-                    display: 'inline-block',
-                    padding: '6px 14px',
-                    background: 'linear-gradient(135deg, #ff6b2c 0%, #ffb340 100%)',
-                    color: 'white',
-                    textDecoration: 'none',
-                    borderRadius: '20px',
-                    fontSize: '12px',
-                    fontWeight: '600',
-                  }}
-                >
-                  View Details
-                </a>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+              </Popup>
+            </Marker>
+          )
+        })}
       </MapContainer>
     </div>
   )
